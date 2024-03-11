@@ -23,7 +23,8 @@ public class ForwardedPortMiddleware
         if (xForwardedPort.Count == 2 && int.TryParse(xForwardedPort[1], out var clientPort))
         {
             context.Connection.RemotePort = clientPort;
-        } else if (int.TryParse(xForwardedPort[0], out var port))
+        }
+        else if (int.TryParse(xForwardedPort[0], out var port))
         {
             context.Connection.RemotePort = port;
         }
