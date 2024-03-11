@@ -2,5 +2,5 @@
 
 namespace HttpHeaders.Api;
 
-[JsonSerializable(typeof(IHeaderDictionary))]
+[JsonSerializable(typeof(Response))]
 internal partial class AppJsonSerializerContext : JsonSerializerContext;
