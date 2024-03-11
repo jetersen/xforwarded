@@ -8,7 +8,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
 });
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor);
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 var app = builder.Build();
 
@@ -17,7 +21,7 @@ app.UseForwardedHeaders();
 app.MapGet("/", (HttpContext context) => TypedResults.Ok(new Response
 {
     RemotePort = context.Connection.RemotePort,
-    RemoteIp = context.Connection.RemoteIpAddress.ToString(),
+    RemoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "",
     Host = context.Request.Host.Host,
     Scheme = context.Request.Scheme,
     Headers = context.Request.Headers,
