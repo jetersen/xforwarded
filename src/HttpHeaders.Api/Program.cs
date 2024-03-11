@@ -16,8 +16,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 var app = builder.Build();
 
-app.UseForwardedPort();
+// Order is important here as we want to apply the forwarded headers before we read the remote port
+// Otherwise, the remote port will be incorrectly set to zero due to X-Forwarded-For not being parsed correctly
 app.UseForwardedHeaders();
+app.UseForwardedPort();
 app.MapGet("/", (HttpContext context) => TypedResults.Ok(new Response
 {
     RemotePort = context.Connection.RemotePort,
