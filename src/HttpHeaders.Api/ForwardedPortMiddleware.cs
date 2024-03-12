@@ -17,16 +17,63 @@ public class ForwardedPortMiddleware
 
     private void ApplyForwardedHeaders(HttpContext context)
     {
-        if (!context.Request.Headers.TryGetValue("X-Forwarded-Port", out var xForwardedPort)) return;
-        // 443 and Client Port from Load Balancer
-        // Lets get the client port from the load balancer
-        if (xForwardedPort.Count == 2 && int.TryParse(xForwardedPort[1], out var clientPort))
+        var currentPort = context.Connection.RemotePort;
+        var currentValue = 0;
+
+        // X-Original-Forwarded-For is the output of ForwardedForMiddleware however it always returns the first forwarded for address
+        // This ensures that the last forwarded for address with a port is used
+        // Since AWS ALB/NLB would append the port to the last forwarded for address
+        if (context.Request.Headers.TryGetValue("X-Original-Forwarded-For", out var xForwardedFor)
+            && xForwardedFor is [.., { Length: > 0} forwardedFor])
         {
-            context.Connection.RemotePort = clientPort;
+            var forwardedForSpan = forwardedFor.AsSpan();
+            // This would be the beginning of a IPv6 address with forwarded port
+            if (forwardedForSpan[0] == '[')
+            {
+                var endBracketIndex = forwardedForSpan.IndexOf(']');
+                forwardedForSpan = forwardedForSpan[(endBracketIndex + 1)..];
+                var portIndex = forwardedForSpan.LastIndexOf(':');
+                if (portIndex > 0 && int.TryParse(forwardedForSpan[(portIndex + 1)..], out var port))
+                {
+                    currentValue = port;
+                }
+            }
+            else
+            {
+                var portIndex = forwardedForSpan.LastIndexOf(':');
+                if (portIndex > 0 && int.TryParse(forwardedForSpan[(portIndex + 1)..], out var port))
+                {
+                    currentValue = port;
+                }
+            }
+
+            if (currentValue == currentPort)
+            {
+                return;
+            }
+
+            if (currentValue != 0 && currentPort != currentValue)
+            {
+                context.Connection.RemotePort = currentValue;
+                return;
+            }
         }
-        else if (int.TryParse(xForwardedPort[0], out var port))
+
+        // For NLB you need to enable ProxyProtocol and use the X-Forwarded-Port header instead of X-Forwarded-For
+        // In this case NGINX would append the port when ProxyProtocol is used
+        // Here is the required ingress NGINX helm chart configuration
+        // controller:
+        //   proxySetHeaders:
+        //     X-Forwarded-Port: '$proxy_protocol_port'
+        //   config:
+        //     use-forwarded-headers: 'true'
+        //     use-proxy-protocol: 'true'
+        if (!context.Request.Headers.TryGetValue("X-Forwarded-Port", out var xForwardedPort)) return;
         {
-            context.Connection.RemotePort = port;
+            if (xForwardedPort is [.., { Length: > 0} forwardedPort] && int.TryParse(forwardedPort, out var port))
+            {
+                context.Connection.RemotePort = port;
+            }
         }
     }
 }
