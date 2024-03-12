@@ -20,9 +20,7 @@ public class ForwardedPortMiddleware
         var currentPort = context.Connection.RemotePort;
         var currentValue = 0;
 
-        // X-Original-Forwarded-For is the output of ForwardedForMiddleware however it always returns the first forwarded for address
-        // This ensures that the last forwarded for address with a port is used
-        // Since AWS ALB/NLB would append the port to the last forwarded for address
+        // X-Original-Forwarded-For is the output of ingress NGINX
         if (context.Request.Headers.TryGetValue("X-Original-Forwarded-For", out var xForwardedFor)
             && xForwardedFor is [.., { Length: > 0} forwardedFor])
         {
