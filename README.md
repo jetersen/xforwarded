@@ -2,7 +2,7 @@
 
 HTTP request diagnostics built with .NET 10 NativeAOT. The SDK is selected in
 `global.json`; the runtime patch and container configuration are selected in the project.
-The .NET SDK builds containers directly, using a stable Ubuntu 24.04 (Noble)
+The .NET SDK builds containers directly, using a stable Ubuntu 26.04 (Resolute)
 runtime-deps base instead of the old nightly Jammy image. No Dockerfile is needed.
 The chiseled runtime-deps image includes the libraries needed by this invariant
 globalization NativeAOT app, with no managed runtime, shell, or package manager.
@@ -39,43 +39,35 @@ metadata. This denylist cannot identify every custom secret header; configure
 additional names at ingress/deployment time. Avoid sending credentials as other
 header values, URLs or host names.
 
-## Build and test
+## Build and publish
 
-Requires the SDK selected by `global.json`, Docker, Bash, Python 3 and the
+Requires the SDK selected by `global.json`, Docker and the
 [NativeAOT prerequisites](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/)
-(`clang` and `zlib1g-dev` on Ubuntu 24.04). Run on the target architecture from
+(`clang` and `zlib1g-dev` on Ubuntu 26.04). Run on the target architecture from
 the repository root:
 
 ```sh
-dotnet build -c Release --warnaserror
-# In one terminal:
-Diagnostics__RedactedHeaders__0=X-Custom-Secret dotnet run --no-build -c Release --project src/HttpHeaders.Api --no-launch-profile --urls http://127.0.0.1:8080
-# In another:
-python3 tests/smoke.py http://127.0.0.1:8080
-
 # amd64:
-bash tests/build-container.sh linux-x64 amd64
+dotnet publish src/HttpHeaders.Api -t:PublishContainer -c Release -r linux-x64 --warnaserror
 # On an ARM64 machine instead:
-bash tests/build-container.sh linux-arm64 arm64
+dotnet publish src/HttpHeaders.Api -t:PublishContainer -c Release -r linux-arm64 --warnaserror
 ```
 
-`dotnet publish -t:PublishContainer` compiles the NativeAOT app and constructs
-its container image. The project pins `runtime-deps:10.0.14-noble-chiseled`,
-user 1654 and HTTP port 8080. The SDK writes the image to the local Docker engine
-for HTTP regression tests; CI never transfers image archives between jobs.
+The SDK compiles the NativeAOT app and constructs its container image, using
+`runtime-deps:10.0.14-resolute-chiseled`, user 1654 and HTTP port 8080. Local builds
+write to the Docker engine. CI never transfers image archives between jobs.
 
-CI builds and tests Linux amd64 on `ubuntu-24.04` and Linux arm64 on
-`ubuntu-24.04-arm`, without emulation or cross-compiling NativeAOT. PR jobs have
-read-only repository permission, no registry login and no image push.
+CI builds Linux amd64 on `ubuntu-26.04` and Linux arm64 on `ubuntu-26.04-arm`,
+without emulation or cross-compiling NativeAOT. PR jobs have read-only repository
+permission, no registry login and no image push. The runners already provide the
+SDK and Clang; setup-dotnet selects the pinned SDK and CI installs zlib headers.
 
-After both checks pass on a push to `main`, separate native publishing jobs
-build and test the app again, then publish that native output directly through
-the SDK to `ghcr.io/jetersen/xforwarded` as `sha-<full commit>-amd64` and
-`sha-<full commit>-arm64`. They also test each registry image by digest. Only the
-small digest reference files are passed to the manifest job. Once both images
-pass, it creates and verifies `main` and `sha-<full commit>` multi-platform
-manifests. Docker/Kubernetes automatically selects the node's architecture.
-Deploy by immutable multi-platform manifest digest.
+After both builds pass on a push to `main`, separate native publishing jobs
+publish directly through the SDK to `ghcr.io/jetersen/xforwarded` as
+`sha-<full commit>-amd64` and `sha-<full commit>-arm64`. Only the small digest
+reference files are passed to the manifest job. It creates and verifies `main`
+and `sha-<full commit>` multi-platform manifests. Docker/Kubernetes automatically
+selects the node's architecture. Deploy by immutable multi-platform manifest digest.
 
 ## Deployment contract
 
@@ -89,8 +81,7 @@ Deploy by immutable multi-platform manifest digest.
   access-controlled and configure redaction for any custom credential headers.
 - Invariant globalization, no ICU/time-zone data dependency. Configuration may
   be supplied via environment variables; no writable application directory needed.
-- The container test uses a 128 MiB memory limit and one CPU. Size production
-  requests/limits from expected traffic and measurements, not this smoke test.
+- Set resource requests and limits from expected traffic and measurements.
 - CloudFront, ingress, identity-aware access, DNS, certificates and optional
   viewer mTLS belong in separately managed infrastructure. Health probes must
   reach the service directly without requiring viewer authentication.

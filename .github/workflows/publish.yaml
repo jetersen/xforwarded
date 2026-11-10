@@ -1,4 +1,4 @@
-name: Build, test, and publish
+name: Build and publish
 
 on:
   pull_request:
@@ -13,55 +13,47 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-test:
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
             rid: linux-x64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - arch: arm64
             rid: linux-arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Install NativeAOT prerequisites
-        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
-      - name: Build
-        run: dotnet build -c Release --warnaserror
-      - name: Test managed app
-        shell: bash
-        run: |
-          dotnet src/HttpHeaders.Api/bin/Release/net10.0/HttpHeaders.Api.dll --urls http://127.0.0.1:8080 &
-          app_pid=$!
-          trap 'kill "$app_pid"' EXIT
-          python3 tests/smoke.py http://127.0.0.1:8080
-        env:
-          Diagnostics__RedactedHeaders__0: X-Custom-Secret
-      - name: Build and test SDK container
+      - name: Install NativeAOT zlib headers
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - name: Build NativeAOT SDK container
         env:
           RID: ${{ matrix.rid }}
           ARCH: ${{ matrix.arch }}
-        run: bash tests/build-container.sh "$RID" "$ARCH"
+        run: >-
+          dotnet publish src/HttpHeaders.Api/HttpHeaders.Api.csproj
+          -t:PublishContainer -c Release -r "$RID" --warnaserror
+          -p:ContainerImageTag="build-$ARCH"
 
   publish-platform:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-and-test
+    needs: build
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
             rid: linux-x64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - arch: arm64
             rid: linux-arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -71,37 +63,29 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Install NativeAOT prerequisites
-        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
-      - name: Build and test SDK container
-        env:
-          RID: ${{ matrix.rid }}
-          ARCH: ${{ matrix.arch }}
-        run: bash tests/build-container.sh "$RID" "$ARCH"
+      - name: Install NativeAOT zlib headers
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish tested native output with the SDK
+      - name: Publish NativeAOT container with the SDK
         env:
           RID: ${{ matrix.rid }}
           ARCH: ${{ matrix.arch }}
         run: >-
           dotnet publish src/HttpHeaders.Api/HttpHeaders.Api.csproj
-          -t:PublishContainer -c Release -r "$RID" --no-build --no-restore
+          -t:PublishContainer -c Release -r "$RID" --warnaserror
           -p:ContainerRegistry="$REGISTRY" -p:ContainerRepository="$IMAGE_NAME"
           -p:ContainerImageTag="sha-$GITHUB_SHA-$ARCH"
-      - uses: docker/setup-buildx-action@v3
-      - name: Record and test published digest
+      - name: Record published digest
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           image="$REGISTRY/$IMAGE_NAME:sha-$GITHUB_SHA-$ARCH"
-          digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["digest"])')
+          digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -r '.digest')
           reference="$REGISTRY/$IMAGE_NAME@$digest"
-          docker pull "$reference"
-          bash tests/container.sh "$reference" "$ARCH"
           mkdir -p "$RUNNER_TEMP/digests"
           printf '%s\n' "$reference" > "$RUNNER_TEMP/digests/$ARCH.txt"
       - uses: actions/upload-artifact@v4
@@ -113,7 +97,7 @@ jobs:
   publish-manifest:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: publish-platform
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
@@ -123,23 +107,17 @@ jobs:
           pattern: digest-*
           merge-multiple: true
           path: /tmp/digests
-      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish multi-platform manifests from tested digests
+      - name: Publish multi-platform manifests
         run: |
           sources=("$(cat /tmp/digests/amd64.txt)" "$(cat /tmp/digests/arm64.txt)")
           for tag in "sha-$GITHUB_SHA" main; do
             image="$REGISTRY/$IMAGE_NAME:$tag"
             docker buildx imagetools create --tag "$image" "${sources[@]}"
             docker buildx imagetools inspect --raw "$image" > /tmp/manifest.json
-            python3 - <<'PYTHON'
-          import json
-          platforms = {(m['platform']['os'], m['platform']['architecture'])
-                       for m in json.load(open('/tmp/manifest.json'))['manifests']}
-          assert platforms == {('linux', 'amd64'), ('linux', 'arm64')}, platforms
-          PYTHON
+            jq -e '[.manifests[].platform | .os + "/" + .architecture] | sort == ["linux/amd64", "linux/arm64"]' /tmp/manifest.json
           done

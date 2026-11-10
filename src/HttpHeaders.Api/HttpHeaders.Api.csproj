@@ -7,7 +7,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
     <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
-    <ContainerBaseImage>mcr.microsoft.com/dotnet/runtime-deps:10.0.14-noble-chiseled</ContainerBaseImage>
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/runtime-deps:10.0.14-resolute-chiseled</ContainerBaseImage>
     <ContainerRepository>xforwarded</ContainerRepository>
     <ContainerUser>1654</ContainerUser>
   </PropertyGroup>
