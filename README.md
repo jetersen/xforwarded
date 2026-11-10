@@ -54,12 +54,18 @@ docker build --platform linux/amd64 -f src/HttpHeaders.Api/Dockerfile -t xforwar
 bash tests/container.sh xforwarded:test
 ```
 
-The Docker build performs a self-contained `linux-x64` NativeAOT publish. Only
-Linux amd64 is built and published; ARM64 needs a separate native build and tests.
-The same HTTP regression suite runs against managed and NativeAOT containers.
+The Docker build uses Docker's `TARGETARCH` for restore and self-contained
+NativeAOT publish. CI builds and tests Linux amd64 on `ubuntu-24.04` and Linux
+arm64 on `ubuntu-24.04-arm`, using native runners without emulation. The same HTTP
+regression suite runs against managed and NativeAOT containers on both architectures.
+To build locally on an ARM64 machine, use `--platform linux/arm64` instead.
 PR CI has read-only repository permission, no registry login and no image push.
-Only successful pushes to `main` publish the exact tested image to GHCR, tagged
-`main` and `sha-<full commit>`. Deploy by immutable image digest.
+Only successful pushes to `main`, after both architectures pass, publish the
+exact tested images to `ghcr.io/jetersen/xforwarded` as
+`sha-<full commit>-amd64` and `sha-<full commit>-arm64`. The `main` and
+`sha-<full commit>` tags are multi-platform manifests referencing those images;
+Docker/Kubernetes automatically selects the node's architecture. Deploy by the
+immutable multi-platform manifest digest. PR builds never upload registry images.
 
 ## Deployment contract
 

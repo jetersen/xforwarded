@@ -1,11 +1,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.403-noble-aot AS build
 
+ARG TARGETARCH
 WORKDIR /src
 COPY global.json ./
 COPY src/HttpHeaders.Api/*.csproj ./src/HttpHeaders.Api/
-RUN dotnet restore src/HttpHeaders.Api/HttpHeaders.Api.csproj -r linux-x64
+RUN dotnet restore src/HttpHeaders.Api/HttpHeaders.Api.csproj -a "$TARGETARCH"
 COPY src/HttpHeaders.Api/ ./src/HttpHeaders.Api/
-RUN dotnet publish src/HttpHeaders.Api/HttpHeaders.Api.csproj --no-restore --warnaserror -r linux-x64 -c Release -o /app/publish
+RUN dotnet publish src/HttpHeaders.Api/HttpHeaders.Api.csproj --no-restore --warnaserror -a "$TARGETARCH" -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0.14-noble-chiseled
 WORKDIR /home/app
