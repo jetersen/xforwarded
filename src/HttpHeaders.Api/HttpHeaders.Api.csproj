@@ -7,6 +7,16 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
     <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/runtime-deps:10.0.14-noble-chiseled</ContainerBaseImage>
+    <ContainerRepository>xforwarded</ContainerRepository>
+    <ContainerUser>1654</ContainerUser>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ContainerLabel Include="org.opencontainers.image.source" Value="https://github.com/jetersen/xforwarded" />
+    <ContainerLabel Include="org.opencontainers.image.revision" Value="$(GITHUB_SHA)" Condition="'$(GITHUB_SHA)' != ''" />
+    <ContainerPort Include="8080" Type="tcp" />
+    <ContainerEnvironmentVariable Include="ASPNETCORE_HTTP_PORTS" Value="8080" />
+  </ItemGroup>
 
 </Project>

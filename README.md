@@ -1,8 +1,9 @@
 # xforwarded
 
 HTTP request diagnostics built with .NET 10 NativeAOT. The SDK is selected in
-`global.json`; the runtime patch is selected in the project and Dockerfile.
-Stable Microsoft Ubuntu 24.04 (Noble) images replace the old nightly Jammy images.
+`global.json`; the runtime patch and container configuration are selected in the project.
+The .NET SDK builds containers directly, using a stable Ubuntu 24.04 (Noble)
+runtime-deps base instead of the old nightly Jammy image. No Dockerfile is needed.
 The chiseled runtime-deps image includes the libraries needed by this invariant
 globalization NativeAOT app, with no managed runtime, shell, or package manager.
 
@@ -40,7 +41,9 @@ header values, URLs or host names.
 
 ## Build and test
 
-Requires the SDK selected by `global.json`, Docker, Bash and Python 3. Run from
+Requires the SDK selected by `global.json`, Docker, Bash, Python 3 and the
+[NativeAOT prerequisites](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/)
+(`clang` and `zlib1g-dev` on Ubuntu 24.04). Run on the target architecture from
 the repository root:
 
 ```sh
@@ -50,22 +53,29 @@ Diagnostics__RedactedHeaders__0=X-Custom-Secret dotnet run --no-build -c Release
 # In another:
 python3 tests/smoke.py http://127.0.0.1:8080
 
-docker build --platform linux/amd64 -f src/HttpHeaders.Api/Dockerfile -t xforwarded:test .
-bash tests/container.sh xforwarded:test
+# amd64:
+bash tests/build-container.sh linux-x64 amd64
+# On an ARM64 machine instead:
+bash tests/build-container.sh linux-arm64 arm64
 ```
 
-The Docker build uses Docker's `TARGETARCH` for restore and self-contained
-NativeAOT publish. CI builds and tests Linux amd64 on `ubuntu-24.04` and Linux
-arm64 on `ubuntu-24.04-arm`, using native runners without emulation. The same HTTP
-regression suite runs against managed and NativeAOT containers on both architectures.
-To build locally on an ARM64 machine, use `--platform linux/arm64` instead.
-PR CI has read-only repository permission, no registry login and no image push.
-Only successful pushes to `main`, after both architectures pass, publish the
-exact tested images to `ghcr.io/jetersen/xforwarded` as
-`sha-<full commit>-amd64` and `sha-<full commit>-arm64`. The `main` and
-`sha-<full commit>` tags are multi-platform manifests referencing those images;
-Docker/Kubernetes automatically selects the node's architecture. Deploy by the
-immutable multi-platform manifest digest. PR builds never upload registry images.
+`dotnet publish -t:PublishContainer` compiles the NativeAOT app and constructs
+its container image. The project pins `runtime-deps:10.0.14-noble-chiseled`,
+user 1654 and HTTP port 8080. The SDK writes the image to the local Docker engine
+for HTTP regression tests; CI never transfers image archives between jobs.
+
+CI builds and tests Linux amd64 on `ubuntu-24.04` and Linux arm64 on
+`ubuntu-24.04-arm`, without emulation or cross-compiling NativeAOT. PR jobs have
+read-only repository permission, no registry login and no image push.
+
+After both checks pass on a push to `main`, separate native publishing jobs
+build and test the app again, then publish that native output directly through
+the SDK to `ghcr.io/jetersen/xforwarded` as `sha-<full commit>-amd64` and
+`sha-<full commit>-arm64`. They also test each registry image by digest. Only the
+small digest reference files are passed to the manifest job. Once both images
+pass, it creates and verifies `main` and `sha-<full commit>` multi-platform
+manifests. Docker/Kubernetes automatically selects the node's architecture.
+Deploy by immutable multi-platform manifest digest.
 
 ## Deployment contract
 
@@ -88,7 +98,7 @@ immutable multi-platform manifest digest. PR builds never upload registry images
 ## Primary references
 
 - [.NET 10 release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)
-- [Supported SDK images](https://github.com/dotnet/dotnet-docker/blob/main/README.sdk.md)
+- [SDK container publishing configuration](https://learn.microsoft.com/en-us/dotnet/core/containers/publish-configuration)
 - [Supported runtime-deps images](https://github.com/dotnet/dotnet-docker/blob/main/README.runtime-deps.md)
 - [Chiseled images](https://github.com/dotnet/dotnet-docker/blob/main/documentation/ubuntu-chiseled.md)
 - [Forwarded headers options](https://github.com/dotnet/aspnetcore/blob/v10.0.14/src/Middleware/HttpOverrides/src/ForwardedHeadersOptions.cs)
