@@ -1,5 +1,4 @@
 using HttpHeaders.Api;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateSlimBuilder(args);
@@ -11,7 +10,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
-    options.KnownNetworks.Clear();
+    // This diagnostic service intentionally accepts forwarded values from any peer.
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
 });
 
