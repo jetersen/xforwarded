@@ -64,9 +64,10 @@ SDK and Clang; setup-dotnet selects the pinned SDK and CI installs zlib headers.
 
 After both builds pass on a push to `main`, separate native publishing jobs
 publish directly through the SDK to `ghcr.io/jetersen/xforwarded` as
-`sha-<full commit>-amd64` and `sha-<full commit>-arm64`. Only the small digest
-reference files are passed to the manifest job. It creates and verifies `main`
-and `sha-<full commit>` multi-platform manifests. Docker/Kubernetes automatically
+`sha-<full commit>-amd64` and `sha-<full commit>-arm64`. The common commit tag
+flows through a step/job output. The manifest job resolves both architecture tags
+from GHCR and creates and verifies `main` and `sha-<full commit>` multi-platform
+manifests. No artifact uploads or downloads are needed. Docker/Kubernetes automatically
 selects the node's architecture. Deploy by immutable multi-platform manifest digest.
 
 ## Deployment contract
